@@ -1,0 +1,101 @@
+{
+  "name": "random-file-navigator",
+  "displayName": "Random File Navigator",
+  "description": "Navigate through all files in your workspace in a randomised order, cycling through root files and nested folder files alike.",
+  "version": "0.1.0",
+  "publisher": "cursor-ext",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "keywords": ["random", "navigation", "files", "cursor"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/random-file-navigator"
+  },
+  "license": "MIT",
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "randomFileNavigator.nextFile",
+        "title": "Random File Navigator: Next Random File"
+      },
+      {
+        "command": "randomFileNavigator.prevFile",
+        "title": "Random File Navigator: Previous File"
+      },
+      {
+        "command": "randomFileNavigator.reshuffle",
+        "title": "Random File Navigator: Reshuffle & Restart"
+      },
+      {
+        "command": "randomFileNavigator.showQueue",
+        "title": "Random File Navigator: Show File Queue"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "randomFileNavigator.nextFile",
+        "key": "ctrl+shift+]",
+        "mac": "cmd+shift+]"
+      },
+      {
+        "command": "randomFileNavigator.prevFile",
+        "key": "ctrl+shift+[",
+        "mac": "cmd+shift+["
+      }
+    ],
+    "configuration": {
+      "title": "Random File Navigator",
+      "properties": {
+        "randomFileNavigator.excludePatterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [
+            "**/node_modules/**",
+            "**/.git/**",
+            "**/dist/**",
+            "**/out/**",
+            "**/.next/**",
+            "**/__pycache__/**",
+            "**/*.pyc",
+            "**/.DS_Store"
+          ],
+          "description": "Glob patterns to exclude when building the file queue."
+        },
+        "randomFileNavigator.includePatterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["**/*"],
+          "description": "Glob patterns for files to include in the queue."
+        },
+        "randomFileNavigator.autoReshuffle": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically reshuffle when the queue is exhausted."
+        },
+        "randomFileNavigator.showProgressInStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show current queue position in the status bar."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.3.0"
+  }
+}
