@@ -153,7 +153,12 @@
             "**/*.webp",
             "**/*.svg",
             "**/*.ico",
-            "**/*.webp"
+            "**/*.webp",
+            "**/*.json",
+            "**/*.yaml",
+            "**/*.yml",
+            "**/*.xml",
+            "**/storage/**"
           ],
           "description": "Glob patterns to exclude when building the file queue."
         },
