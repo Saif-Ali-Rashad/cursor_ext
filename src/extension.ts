@@ -20,6 +20,107 @@ interface NavigatorState {
 
 let state: NavigatorState = { queue: [], index: -1, history: [] };
 let statusBarItem: vscode.StatusBarItem;
+let timerStatusBarItem: vscode.StatusBarItem;
+
+// ── Auto-advance timer ────────────────────────────────────────────────────────
+let autoTimer: ReturnType<typeof setInterval> | undefined;
+let countdownTimer: ReturnType<typeof setInterval> | undefined;
+let secondsRemaining = 0;
+let timerRunning = false;
+
+function clearTimers(): void {
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = undefined; }
+  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = undefined; }
+}
+
+function updateTimerStatusBar(): void {
+  if (!timerRunning) {
+    timerStatusBarItem.text = '$(clock) RFN: off';
+    timerStatusBarItem.tooltip = 'Random File Navigator — auto-advance is off\nClick to start';
+    timerStatusBarItem.color = undefined;
+  } else {
+    const interval = cfg<number>('autoAdvanceInterval');
+    timerStatusBarItem.text = `$(sync~spin) RFN: ${secondsRemaining}s`;
+    timerStatusBarItem.tooltip =
+      `Random File Navigator — auto-advance every ${interval}s\nNext file in ${secondsRemaining}s\nClick to stop`;
+    timerStatusBarItem.color = new vscode.ThemeColor('statusBarItem.warningForeground');
+  }
+  timerStatusBarItem.show();
+}
+
+function startAutoAdvance(): void {
+  if (timerRunning) return;
+
+  const interval = cfg<number>('autoAdvanceInterval');
+  if (!interval || interval < 1) {
+    vscode.window.showWarningMessage(
+      'Random File Navigator: Set "randomFileNavigator.autoAdvanceInterval" (seconds) in settings first.'
+    );
+    return;
+  }
+
+  timerRunning = true;
+  secondsRemaining = interval;
+  updateTimerStatusBar();
+
+  // Countdown tick every second for the status bar display
+  countdownTimer = setInterval(() => {
+    secondsRemaining--;
+    if (secondsRemaining < 0) secondsRemaining = interval;
+    updateTimerStatusBar();
+  }, 1000);
+
+  // Actual file switch on the full interval
+  autoTimer = setInterval(() => {
+    secondsRemaining = interval;
+    nextFile();
+  }, interval * 1000);
+
+  vscode.window.setStatusBarMessage(
+    `$(sync~spin) Random File Navigator: auto-advance every ${interval}s`,
+    3000
+  );
+}
+
+function stopAutoAdvance(): void {
+  if (!timerRunning) return;
+  timerRunning = false;
+  clearTimers();
+  updateTimerStatusBar();
+  vscode.window.setStatusBarMessage('$(circle-slash) Random File Navigator: auto-advance stopped', 2500);
+}
+
+function toggleAutoAdvance(): void {
+  timerRunning ? stopAutoAdvance() : startAutoAdvance();
+}
+
+async function setIntervalAndStart(): Promise<void> {
+  const input = await vscode.window.showInputBox({
+    title: 'Random File Navigator — Auto-advance interval',
+    prompt: 'How many seconds between each file switch?',
+    value: String(cfg<number>('autoAdvanceInterval') || 30),
+    validateInput: (v) => {
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < 1) return 'Enter a whole number ≥ 1';
+      return null;
+    },
+  });
+
+  if (input === undefined) return; // user cancelled
+
+  const seconds = parseInt(input, 10);
+
+  await vscode.workspace
+    .getConfiguration('randomFileNavigator')
+    .update('autoAdvanceInterval', seconds, vscode.ConfigurationTarget.Global);
+
+  stopAutoAdvance();
+  startAutoAdvance();
+
+  vscode.window.showInformationMessage(
+    `Random File Navigator: auto-advance set to every ${seconds} second${seconds === 1 ? '' : 's'}.`
+  );
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function cfg<T>(key: string): T {
@@ -40,16 +141,12 @@ async function buildQueue(): Promise<vscode.Uri[]> {
     results.push(...found);
   }
 
-  // Deduplicate by fsPath
   const seen = new Set<string>();
-  const deduped = results.filter((u) => {
+  return results.filter((u) => {
     if (seen.has(u.fsPath)) return false;
     seen.add(u.fsPath);
     return true;
   });
-
-  // Filter out directories (findFiles should only return files, but be safe)
-  return deduped;
 }
 
 function updateStatusBar(): void {
@@ -112,7 +209,6 @@ async function nextFile(): Promise<void> {
 
   state.index++;
 
-  // Auto-reshuffle when queue is exhausted
   if (state.index >= state.queue.length) {
     if (cfg<boolean>('autoReshuffle')) {
       vscode.window.showInformationMessage(
@@ -163,14 +259,14 @@ async function showQueue(): Promise<void> {
   const rootPath = workspaceFolders?.[0]?.uri.fsPath ?? '';
 
   const items: vscode.QuickPickItem[] = state.queue.map((uri, i) => {
-    const relative = rootPath
-      ? path.relative(rootPath, uri.fsPath)
-      : uri.fsPath;
+    const relative = rootPath ? path.relative(rootPath, uri.fsPath) : uri.fsPath;
     const isCurrent = i === state.index;
     return {
       label: `${isCurrent ? '▶ ' : '  '}${path.basename(uri.fsPath)}`,
       description: path.dirname(relative),
-      detail: isCurrent ? `Current position (${i + 1}/${state.queue.length})` : `${i + 1}/${state.queue.length}`,
+      detail: isCurrent
+        ? `Current position (${i + 1}/${state.queue.length})`
+        : `${i + 1}/${state.queue.length}`,
       picked: isCurrent,
     };
   });
@@ -182,7 +278,6 @@ async function showQueue(): Promise<void> {
 
   if (!pick) return;
 
-  // Find the index of the selected item
   const chosenIndex = items.indexOf(pick);
   if (chosenIndex === -1) return;
 
@@ -193,36 +288,36 @@ async function showQueue(): Promise<void> {
 
 // ── Activation ───────────────────────────────────────────────────────────────
 export function activate(context: vscode.ExtensionContext): void {
-  statusBarItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Right,
-    100
-  );
+  // Main position status bar (right side)
+  statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBarItem.command = 'randomFileNavigator.showQueue';
   context.subscriptions.push(statusBarItem);
 
-  // Pre-build queue in the background on activation so first keypress is instant
+  // Timer status bar (slightly to the left of the position one)
+  timerStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
+  timerStatusBarItem.command = 'randomFileNavigator.toggleAutoAdvance';
+  context.subscriptions.push(timerStatusBarItem);
+
   ensureQueue().then(updateStatusBar);
+  updateTimerStatusBar();
 
-  // Rebuild queue when workspace changes
+  // Rebuild queue when files are added/deleted
   const watcher = vscode.workspace.createFileSystemWatcher('**/*');
-  const rebuild = () => {
-    state.queue = [];
-    state.index = -1;
-    updateStatusBar();
-  };
-  context.subscriptions.push(
-    watcher.onDidCreate(rebuild),
-    watcher.onDidDelete(rebuild),
-    watcher
-  );
+  const invalidate = () => { state.queue = []; state.index = -1; updateStatusBar(); };
+  context.subscriptions.push(watcher.onDidCreate(invalidate), watcher.onDidDelete(invalidate), watcher);
 
-  // Re-build when config changes
+  // React to settings changes
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('randomFileNavigator')) {
         state.queue = [];
         state.index = -1;
         updateStatusBar();
+        // Restart timer with new interval if it was running
+        if (timerRunning && e.affectsConfiguration('randomFileNavigator.autoAdvanceInterval')) {
+          stopAutoAdvance();
+          startAutoAdvance();
+        }
       }
     })
   );
@@ -231,12 +326,18 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('randomFileNavigator.nextFile', nextFile),
     vscode.commands.registerCommand('randomFileNavigator.prevFile', prevFile),
     vscode.commands.registerCommand('randomFileNavigator.reshuffle', reshuffleAndRestart),
-    vscode.commands.registerCommand('randomFileNavigator.showQueue', showQueue)
+    vscode.commands.registerCommand('randomFileNavigator.showQueue', showQueue),
+    vscode.commands.registerCommand('randomFileNavigator.startAutoAdvance', startAutoAdvance),
+    vscode.commands.registerCommand('randomFileNavigator.stopAutoAdvance', stopAutoAdvance),
+    vscode.commands.registerCommand('randomFileNavigator.toggleAutoAdvance', toggleAutoAdvance),
+    vscode.commands.registerCommand('randomFileNavigator.setInterval', setIntervalAndStart),
   );
 
   updateStatusBar();
 }
 
 export function deactivate(): void {
+  clearTimers();
   statusBarItem?.dispose();
+  timerStatusBarItem?.dispose();
 }

@@ -33,6 +33,22 @@
       {
         "command": "randomFileNavigator.showQueue",
         "title": "Random File Navigator: Show File Queue"
+      },
+      {
+        "command": "randomFileNavigator.setInterval",
+        "title": "Random File Navigator: Set Auto-Advance Interval…"
+      },
+      {
+        "command": "randomFileNavigator.startAutoAdvance",
+        "title": "Random File Navigator: Start Auto-Advance"
+      },
+      {
+        "command": "randomFileNavigator.stopAutoAdvance",
+        "title": "Random File Navigator: Stop Auto-Advance"
+      },
+      {
+        "command": "randomFileNavigator.toggleAutoAdvance",
+        "title": "Random File Navigator: Toggle Auto-Advance"
       }
     ],
     "keybindings": [
@@ -45,6 +61,11 @@
         "command": "randomFileNavigator.prevFile",
         "key": "ctrl+shift+[",
         "mac": "cmd+shift+["
+      },
+      {
+        "command": "randomFileNavigator.toggleAutoAdvance",
+        "key": "ctrl+shift+\\",
+        "mac": "cmd+shift+\\"
       }
     ],
     "configuration": {
@@ -80,6 +101,12 @@
           "type": "boolean",
           "default": true,
           "description": "Show current queue position in the status bar."
+        },
+        "randomFileNavigator.autoAdvanceInterval": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "description": "Seconds between automatic file switches when auto-advance is running."
         }
       }
     }
