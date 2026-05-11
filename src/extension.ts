@@ -205,6 +205,10 @@ async function setIntervalAndStart(): Promise<void> {
   );
 }
 
+async function setRangeAndStart(): Promise<void> {
+  await setIntervalAndStart();
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function cfg<T>(key: string): T {
   return vscode.workspace.getConfiguration('randomFileNavigator').get<T>(key) as T;
@@ -421,6 +425,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('randomFileNavigator.stopAutoAdvance', stopAutoAdvance),
     vscode.commands.registerCommand('randomFileNavigator.toggleAutoAdvance', toggleAutoAdvance),
     vscode.commands.registerCommand('randomFileNavigator.setInterval', setIntervalAndStart),
+    vscode.commands.registerCommand('randomFileNavigator.setRange', setRangeAndStart),
   );
 
   updateStatusBar();
