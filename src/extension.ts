@@ -23,14 +23,81 @@ let statusBarItem: vscode.StatusBarItem;
 let timerStatusBarItem: vscode.StatusBarItem;
 
 // ── Auto-advance timer ────────────────────────────────────────────────────────
-let autoTimer: ReturnType<typeof setInterval> | undefined;
+let autoTimer: ReturnType<typeof setTimeout> | undefined;
 let countdownTimer: ReturnType<typeof setInterval> | undefined;
+let scrollTimer: ReturnType<typeof setTimeout> | undefined;
 let secondsRemaining = 0;
 let timerRunning = false;
+let currentDelaySeconds = 0;
 
 function clearTimers(): void {
-  if (autoTimer) { clearInterval(autoTimer); autoTimer = undefined; }
+  if (autoTimer) { clearTimeout(autoTimer); autoTimer = undefined; }
   if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = undefined; }
+  if (scrollTimer) { clearTimeout(scrollTimer); scrollTimer = undefined; }
+}
+
+function randomInt(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function getAutoAdvanceRangeSeconds(): { min: number; max: number } {
+  const legacyInterval = cfg<number>('autoAdvanceInterval');
+  const rawMin = cfg<number>('autoAdvanceMinSeconds');
+  const rawMax = cfg<number>('autoAdvanceMaxSeconds');
+
+  const fallback = Number.isInteger(legacyInterval) && legacyInterval > 0 ? legacyInterval : 30;
+  const minCandidate = Number.isInteger(rawMin) && rawMin > 0 ? rawMin : fallback;
+  const maxCandidate = Number.isInteger(rawMax) && rawMax > 0 ? rawMax : fallback;
+
+  const min = Math.min(minCandidate, maxCandidate);
+  const max = Math.max(minCandidate, maxCandidate);
+
+  return { min, max };
+}
+
+function scheduleRandomScroll(): void {
+  if (!timerRunning) return;
+  if (scrollTimer) {
+    clearTimeout(scrollTimer);
+    scrollTimer = undefined;
+  }
+
+  const tick = () => {
+    if (!timerRunning) return;
+
+    const editor = vscode.window.activeTextEditor;
+    if (editor) {
+      const maxLine = Math.max(0, editor.document.lineCount - 1);
+      const visibleTop = editor.visibleRanges[0]?.start.line ?? 0;
+      const jump = randomInt(3, 26) * (Math.random() < 0.5 ? -1 : 1);
+      const targetLine = Math.max(0, Math.min(maxLine, visibleTop + jump));
+      const target = new vscode.Range(targetLine, 0, targetLine, 0);
+      editor.revealRange(target, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+    }
+
+    scrollTimer = setTimeout(tick, randomInt(700, 2400));
+  };
+
+  scrollTimer = setTimeout(tick, randomInt(700, 2400));
+}
+
+function scheduleNextAutoAdvance(): void {
+  if (!timerRunning) return;
+
+  if (autoTimer) {
+    clearTimeout(autoTimer);
+    autoTimer = undefined;
+  }
+
+  const range = getAutoAdvanceRangeSeconds();
+  currentDelaySeconds = randomInt(range.min, range.max);
+  secondsRemaining = currentDelaySeconds;
+  updateTimerStatusBar();
+
+  autoTimer = setTimeout(async () => {
+    await nextFile();
+    scheduleNextAutoAdvance();
+  }, currentDelaySeconds * 1000);
 }
 
 function updateTimerStatusBar(): void {
@@ -39,10 +106,10 @@ function updateTimerStatusBar(): void {
     timerStatusBarItem.tooltip = 'Random File Navigator — auto-advance is off\nClick to start';
     timerStatusBarItem.color = undefined;
   } else {
-    const interval = cfg<number>('autoAdvanceInterval');
+    const range = getAutoAdvanceRangeSeconds();
     timerStatusBarItem.text = `$(sync~spin) RFN: ${secondsRemaining}s`;
     timerStatusBarItem.tooltip =
-      `Random File Navigator — auto-advance every ${interval}s\nNext file in ${secondsRemaining}s\nClick to stop`;
+      `Random File Navigator — auto-advance random ${range.min}s–${range.max}s\nCurrent delay ${currentDelaySeconds}s • Next file in ${secondsRemaining}s\nRandom scroll is active while running\nClick to stop`;
     timerStatusBarItem.color = new vscode.ThemeColor('statusBarItem.warningForeground');
   }
   timerStatusBarItem.show();
@@ -51,33 +118,32 @@ function updateTimerStatusBar(): void {
 function startAutoAdvance(): void {
   if (timerRunning) return;
 
-  const interval = cfg<number>('autoAdvanceInterval');
-  if (!interval || interval < 1) {
+  const range = getAutoAdvanceRangeSeconds();
+  if (!range.min || !range.max || range.min < 1 || range.max < 1) {
     vscode.window.showWarningMessage(
-      'Random File Navigator: Set "randomFileNavigator.autoAdvanceInterval" (seconds) in settings first.'
+      'Random File Navigator: Set "randomFileNavigator.autoAdvanceMinSeconds" and "randomFileNavigator.autoAdvanceMaxSeconds" first.'
     );
     return;
   }
 
   timerRunning = true;
-  secondsRemaining = interval;
+  currentDelaySeconds = range.min;
+  secondsRemaining = range.min;
   updateTimerStatusBar();
 
   // Countdown tick every second for the status bar display
   countdownTimer = setInterval(() => {
-    secondsRemaining--;
-    if (secondsRemaining < 0) secondsRemaining = interval;
+    if (secondsRemaining > 0) {
+      secondsRemaining--;
+    }
     updateTimerStatusBar();
   }, 1000);
 
-  // Actual file switch on the full interval
-  autoTimer = setInterval(() => {
-    secondsRemaining = interval;
-    nextFile();
-  }, interval * 1000);
+  scheduleRandomScroll();
+  scheduleNextAutoAdvance();
 
   vscode.window.setStatusBarMessage(
-    `$(sync~spin) Random File Navigator: auto-advance every ${interval}s`,
+    `$(sync~spin) Random File Navigator: auto-advance random ${range.min}s–${range.max}s`,
     3000
   );
 }
@@ -96,29 +162,46 @@ function toggleAutoAdvance(): void {
 
 async function setIntervalAndStart(): Promise<void> {
   const input = await vscode.window.showInputBox({
-    title: 'Random File Navigator — Auto-advance interval',
-    prompt: 'How many seconds between each file switch?',
-    value: String(cfg<number>('autoAdvanceInterval') || 30),
+    title: 'Random File Navigator — Auto-advance range',
+    prompt: 'Enter min-max seconds (for example: 8-25)',
+    value: `${cfg<number>('autoAdvanceMinSeconds') || cfg<number>('autoAdvanceInterval') || 20}-${cfg<number>('autoAdvanceMaxSeconds') || cfg<number>('autoAdvanceInterval') || 45}`,
     validateInput: (v) => {
-      const n = Number(v);
-      if (!Number.isInteger(n) || n < 1) return 'Enter a whole number ≥ 1';
+      const match = /^\s*(\d+)\s*-\s*(\d+)\s*$/.exec(v);
+      if (!match) return 'Use format: min-max (for example 8-25)';
+      const n1 = Number(match[1]);
+      const n2 = Number(match[2]);
+      if (!Number.isInteger(n1) || !Number.isInteger(n2) || n1 < 1 || n2 < 1) {
+        return 'Both values must be whole numbers ≥ 1';
+      }
       return null;
     },
   });
 
   if (input === undefined) return; // user cancelled
 
-  const seconds = parseInt(input, 10);
+  const parsed = /^\s*(\d+)\s*-\s*(\d+)\s*$/.exec(input);
+  if (!parsed) return;
+  const first = parseInt(parsed[1], 10);
+  const second = parseInt(parsed[2], 10);
+  const minSeconds = Math.min(first, second);
+  const maxSeconds = Math.max(first, second);
 
   await vscode.workspace
     .getConfiguration('randomFileNavigator')
-    .update('autoAdvanceInterval', seconds, vscode.ConfigurationTarget.Global);
+    .update('autoAdvanceMinSeconds', minSeconds, vscode.ConfigurationTarget.Global);
+  await vscode.workspace
+    .getConfiguration('randomFileNavigator')
+    .update('autoAdvanceMaxSeconds', maxSeconds, vscode.ConfigurationTarget.Global);
+  // Keep legacy setting in sync for users upgrading from older versions.
+  await vscode.workspace
+    .getConfiguration('randomFileNavigator')
+    .update('autoAdvanceInterval', minSeconds, vscode.ConfigurationTarget.Global);
 
   stopAutoAdvance();
   startAutoAdvance();
 
   vscode.window.showInformationMessage(
-    `Random File Navigator: auto-advance set to every ${seconds} second${seconds === 1 ? '' : 's'}.`
+    `Random File Navigator: auto-advance set to random ${minSeconds}-${maxSeconds} seconds per file.`
   );
 }
 
@@ -313,8 +396,15 @@ export function activate(context: vscode.ExtensionContext): void {
         state.queue = [];
         state.index = -1;
         updateStatusBar();
-        // Restart timer with new interval if it was running
-        if (timerRunning && e.affectsConfiguration('randomFileNavigator.autoAdvanceInterval')) {
+        // Restart timer if random dwell range changed
+        if (
+          timerRunning &&
+          (
+            e.affectsConfiguration('randomFileNavigator.autoAdvanceInterval') ||
+            e.affectsConfiguration('randomFileNavigator.autoAdvanceMinSeconds') ||
+            e.affectsConfiguration('randomFileNavigator.autoAdvanceMaxSeconds')
+          )
+        ) {
           stopAutoAdvance();
           startAutoAdvance();
         }

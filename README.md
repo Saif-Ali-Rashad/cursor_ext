@@ -8,6 +8,8 @@ A Cursor / VS Code extension that shuffles all files in your open workspace into
 - **Next / Previous navigation** — step forward and backward through the shuffled queue.
 - **Auto-reshuffle** — once you reach the end of the queue it re-shuffles automatically (configurable).
 - **Status bar widget** — shows `RFN: 12/87` so you always know where you are. Click it to open the queue picker.
+- **Random dwell range** — keep each file open for a random number of seconds within your configured min/max range.
+- **Human-like random scrolling** — while auto-advance is running, the editor scrolls up/down in random jumps to mimic natural reading movement.
 - **Quick-Pick queue browser** — see the full list of files, the current position is highlighted, and you can jump to any entry.
 - **Reshuffle & Restart** command — generate a fresh random order at any time.
 - **Configurable include / exclude globs** — fine-tune which files appear in the queue.
@@ -28,6 +30,7 @@ A Cursor / VS Code extension that shuffles all files in your open workspace into
 | `Random File Navigator: Previous File` | Go back one step in the queue |
 | `Random File Navigator: Reshuffle & Restart` | Build a brand-new random queue |
 | `Random File Navigator: Show File Queue` | Browse and jump to any file in the queue |
+| `Random File Navigator: Set Auto-Advance Range...` | Set min/max random dwell time per file |
 
 ## Settings
 
@@ -52,7 +55,11 @@ A Cursor / VS Code extension that shuffles all files in your open workspace into
   "randomFileNavigator.autoReshuffle": true,
 
   // Show position counter in the status bar
-  "randomFileNavigator.showProgressInStatusBar": true
+  "randomFileNavigator.showProgressInStatusBar": true,
+
+  // Random dwell range for auto-advance (seconds)
+  "randomFileNavigator.autoAdvanceMinSeconds": 20,
+  "randomFileNavigator.autoAdvanceMaxSeconds": 45
 }
 ```
 

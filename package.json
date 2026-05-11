@@ -36,7 +36,7 @@
       },
       {
         "command": "randomFileNavigator.setInterval",
-        "title": "Random File Navigator: Set Auto-Advance Interval…"
+        "title": "Random File Navigator: Set Auto-Advance Range…"
       },
       {
         "command": "randomFileNavigator.startAutoAdvance",
@@ -158,6 +158,9 @@
             "**/*.yaml",
             "**/*.yml",
             "**/*.xml",
+            "**/*.md",
+            "**/*.deployment",
+            "**/__tests__/**",
             "**/storage/**"
           ],
           "description": "Glob patterns to exclude when building the file queue."
@@ -182,7 +185,19 @@
           "type": "number",
           "default": 30,
           "minimum": 1,
-          "description": "Seconds between automatic file switches when auto-advance is running."
+          "description": "Legacy single-value auto-advance interval in seconds. Kept for backward compatibility."
+        },
+        "randomFileNavigator.autoAdvanceMinSeconds": {
+          "type": "number",
+          "default": 20,
+          "minimum": 1,
+          "description": "Minimum number of seconds to keep each file open before auto-advancing."
+        },
+        "randomFileNavigator.autoAdvanceMaxSeconds": {
+          "type": "number",
+          "default": 45,
+          "minimum": 1,
+          "description": "Maximum number of seconds to keep each file open before auto-advancing."
         }
       }
     }
